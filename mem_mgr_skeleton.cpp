@@ -19,7 +19,7 @@
 #define REPLACE_POLICY FIFO
 
 // SET TO 128 to use replacement policy: FIFO or LRU,
-#define NFRAMES 256
+#define NFRAMES 128
 #define PTABLE_SIZE 256
 #define TLB_SIZE 16
 
@@ -157,7 +157,7 @@ void pg_table_remove(size_t frame)  {
 }
 
 void fifo_replace_page(size_t& frame ) { 
-    tlb_remove(frame_check_tlb(frame));
+    // tlb_remove(frame_check_tlb(frame));
     pg_table_remove(frame);
     fifo_frame_queue.pop();
 }   // TODO
