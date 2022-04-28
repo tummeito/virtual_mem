@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <cassert>
+#include <queue>
 
 #pragma warning(disable : 4996)
 
@@ -32,6 +33,7 @@ struct page_node {
 char* ram = (char*)malloc(NFRAMES * FRAME_SIZE);
 page_node pg_table[PTABLE_SIZE];  // page table and (single) TLB
 page_node tlb[TLB_SIZE];
+std::queue<size_t> fifo_frame_queue;
 
 const char* passed_or_failed(bool condition) { return condition ? " + " : "fail"; }
 size_t failed_asserts = 0;
@@ -50,6 +52,7 @@ void update_frame_ptable(size_t npage, size_t frame_num) {
     pg_table[npage].frame_num = frame_num;
     pg_table[npage].is_present = true;
     pg_table[npage].is_used = true;
+
 }
 
 int find_frame_ptable(size_t frame) {  // FIFO
@@ -122,12 +125,15 @@ void tlb_add(int index, page_node entry) {
     tlb[index] = entry;
 }
 
-void tlb_remove(int index) { }  // TODO
+void tlb_remove(int index) { 
+    tlb[index].npage = (size_t)-1;
+    tlb[index].is_present = false;
+    pg_table[index].is_used = false;
+}  // TODO
 
 void tlb_hit(size_t& frame, size_t& page, size_t& tlb_hits, int result) {
     frame = tlb[result].frame_num;
     tlb_hits++;
-
 }
 
 void tlb_miss(size_t& frame, size_t& page, size_t& tlb_track) { 
@@ -136,7 +142,25 @@ void tlb_miss(size_t& frame, size_t& page, size_t& tlb_track) {
     frame = pg_table[page].frame_num;
 } // TODO
 
-void fifo_replace_page(size_t& frame ) { }   // TODO
+int frame_check_tlb(size_t frame)   {
+    for (int i = 0; i < TLB_SIZE; i++) {
+        if (tlb[i].frame_num == frame) { return i; }
+    }
+    return -1;
+}
+
+void pg_table_remove(size_t frame)  {
+    int pg_index = find_frame_ptable(frame);
+    pg_table[pg_index].is_present = false;
+    pg_table[pg_index].is_used = false;
+    pg_table[pg_index].frame_num = size_t();
+}
+
+void fifo_replace_page(size_t& frame ) { 
+    tlb_remove(frame_check_tlb(frame));
+    pg_table_remove(frame);
+    fifo_frame_queue.pop();
+}   // TODO
 
 void lru_replace_page(size_t& frame) { } // TODO
 
@@ -151,12 +175,14 @@ void page_fault(size_t& frame, size_t& page, size_t& frames_used, size_t& pg_fau
     frame = frames_used % NFRAMES;    // FIFO only
 
     if (is_memfull) { 
-        // if (REPLACE_POLICY == FIFO) {  // TODO
-        // } else { 
-        //     // TODO
-        // }
+        if (REPLACE_POLICY == FIFO) {
+            fifo_replace_page(fifo_frame_queue.front());
+            // TODO
+        } else {
+            // TODO
+        }
     }
-         // load page into RAM, update pg_table, TLB
+        // load page into RAM, update pg_table, TLB
     fseek(fbacking, page * FRAME_SIZE, SEEK_SET);
     fread(buf, FRAME_SIZE, 1, fbacking);
 
@@ -164,6 +190,7 @@ void page_fault(size_t& frame, size_t& page, size_t& frames_used, size_t& pg_fau
         *(ram + (frame * FRAME_SIZE) + i) = buf[i];
     }
     update_frame_ptable(page, frame);
+    fifo_frame_queue.push(frame);
     tlb_add(tlb_track++, pg_table[page]);
     if (tlb_track > 15) { tlb_track = 0; }
     
